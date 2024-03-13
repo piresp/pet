@@ -1,0 +1,36 @@
+FROM node:18-alpine3.18 AS deps
+
+WORKDIR /app
+COPY package.json yarn.lock ./
+RUN yarn install --frozwn-lockfile
+
+FROM node:18-alpine3.18 AS BUILD_IMAGE
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN yarn build
+
+RUN rm -rf node_modules
+RUN yarn install --production --frozen-lockfile --ignore-scripts --prefer-offline
+
+FROM node:18-alpine3.18
+
+ENV NODE_ENV production
+
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+WORKDIR /app
+COPY --from=BUILD_IMAGE --chown=nextjs:nodejs /app/package.json /app/yarn.lock ./
+COPY --from=BUILD_IMAGE --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=BUILD_IMAGE --chown=nextjs:nodejs /app/public ./public
+COPY --from=BUILD_IMAGE --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=BUILD_IMAGE --chown=nextjs:nodejs /app/next.config.js  ./
+
+USER nextjs3
+
+EXPOSE 3000
+
+CMD [ "yarn", "start" ]
